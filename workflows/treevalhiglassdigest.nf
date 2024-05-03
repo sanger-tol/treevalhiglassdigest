@@ -36,6 +36,9 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
+include { YAML_INPUT        } from '../subworkflows/local/yaml_input'
+include { LOAD_FILES        } from '../subworkflows/local/load_files'
+include { INGEST_HIGLASS    } from '../subworkflows/local/ingest_higlass'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,51 +66,52 @@ workflow TREEVALHIGLASSDIGEST {
 
     ch_versions = Channel.empty()
 
-    //
-    // SUBWORKFLOW: Read in samplesheet, validate and stage input files
-    //
-    INPUT_CHECK (
-        file(params.input)
-    )
-    ch_versions = ch_versions.mix(INPUT_CHECK.out.versions)
-    // TODO: OPTIONAL, you can use nf-validation plugin to create an input channel from the samplesheet with Channel.fromSamplesheet("input")
-    // See the documentation https://nextflow-io.github.io/nf-validation/samplesheets/fromSamplesheet/
-    // ! There is currently no tooling to help you write a sample sheet schema
+    input_ch        = Channel.fromPath(params.input, checkIfExists: true)
 
     //
-    // MODULE: Run FastQC
+    // SUBWORKFLOW: reads the yaml and pushing out into a channel per yaml field
     //
-    FASTQC (
-        INPUT_CHECK.out.reads
+    YAML_INPUT (
+        input_ch
     )
-    ch_versions = ch_versions.mix(FASTQC.out.versions.first())
 
+    //
+    // SUBWORKFLOW: reads the yaml and pushing out into a channel per yaml field
+    //
+    LOAD_FILES (
+        YAML_INPUT.out.tolid,
+        YAML_INPUT.out.directory
+    )
+
+    //
+    // SUBWORKFLOW: 
+    //
+    INGEST_HIGLASS (
+        YAML_INPUT.out.tolid,
+        LOAD_FILES.out.mcool,                       // Channel: path(file)
+        LOAD_FILES.out.genome,                      // Channel: path(file)
+        LOAD_FILES.out.coverage,                    // Channel: path(file)
+        LOAD_FILES.out.repeatdensity,               // Channel: path(file)
+        LOAD_FILES.out.gap,                         // Channel: path(file)
+        LOAD_FILES.out.telo,                        // Channel: path(file)
+        YAML_INPUT.out.higlass_url,
+        YAML_INPUT.out.higlass_deployment_name,
+        YAML_INPUT.out.higlass_namespace,
+        YAML_INPUT.out.higlass_kubeconfig,
+        YAML_INPUT.out.higlass_upload_directory, // channel: val(higlass_upload_directory)
+    )
+    ch_versions     = ch_versions.mix( INGEST_HIGLASS.out.versions )
+
+    //
+    // SUBWORKFLOW: Collates version data from prior subworflows
+    //
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )
 
-    //
-    // MODULE: MultiQC
-    //
-    workflow_summary    = WorkflowTreevalhiglassdigest.paramsSummaryMultiqc(workflow, summary_params)
-    ch_workflow_summary = Channel.value(workflow_summary)
-
-    methods_description    = WorkflowTreevalhiglassdigest.methodsDescriptionText(workflow, ch_multiqc_custom_methods_description, params)
-    ch_methods_description = Channel.value(methods_description)
-
-    ch_multiqc_files = Channel.empty()
-    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_methods_description.collectFile(name: 'methods_description_mqc.yaml'))
-    ch_multiqc_files = ch_multiqc_files.mix(CUSTOM_DUMPSOFTWAREVERSIONS.out.mqc_yml.collect())
-    ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
-
-    MULTIQC (
-        ch_multiqc_files.collect(),
-        ch_multiqc_config.toList(),
-        ch_multiqc_custom_config.toList(),
-        ch_multiqc_logo.toList()
-    )
-    multiqc_report = MULTIQC.out.report.toList()
+    emit:
+    software_ch     = CUSTOM_DUMPSOFTWAREVERSIONS.out.yml
+    versions_ch     = CUSTOM_DUMPSOFTWAREVERSIONS.out.versions
 }
 
 /*

@@ -9,7 +9,7 @@
 
 ## Introduction
 
-**sanger-tol/treevalhiglassdigest** is a bioinformatics pipeline that ...
+**sanger-tol/treevalhiglassdigest** is a bioinformatics pipeline to submit the output from the Treeval pipeline, to a HiGlass Kubernetes pod, creating a custom view config and returning the link.
 
 <!-- TODO nf-core:
    Complete this sentence with a 2-3 sentence summary of what types of data the pipeline ingests, a brief overview of the
@@ -21,8 +21,14 @@
      workflows use the "tube map" design for that. See https://nf-co.re/docs/contributing/design_guidelines#examples for examples.   -->
 <!-- TODO nf-core: Fill in short bullet-pointed list of the default steps in the pipeline -->
 
-1. Read QC ([`FastQC`](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/))
-2. Present QC for raw reads ([`MultiQC`](http://multiqc.info/))
+1. Loads required files from Treeval output directory into HiGlass upload directory.
+2. Uploads files to Kubernetes, setting custom and standardized UUIDs.
+3. Creates View Config for HiGlass and returns hyperlink path, which will be:
+```
+ <HIGLASS_URL>/l/?d=<TOLID>
+```
+<!-- 1. Read QC ([`FastQC`](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/))
+2. Present QC for raw reads ([`MultiQC`](http://multiqc.info/)) -->
 
 ## Usage
 
@@ -51,21 +57,34 @@ Now, you can run the pipeline using:
 
 ```bash
 nextflow run sanger-tol/treevalhiglassdigest \
-   -profile <docker/singularity/.../institute> \
-   --input samplesheet.csv \
+   -profile sanger,singularity \
+   --input <INPUT_YAML> \
    --outdir <OUTDIR>
 ```
 
+The input .yaml needs to be in this format:
+```yaml
+sample:
+  tolid: <TOLID>
+  directory: <TREEVAL_ROOT_DIRECTORY>
+higlass:
+  higlass_url: <HIGLASS_URL>
+  higlass_deployment_name: higlass-app-grit
+  higlass_namespace: tol-higlass-grit
+  higlass_kubeconfig: <HIGLASS_KUBECONFIG_PATH>
+  higlass_upload_directory: <HIGLASS_UPLOAD_DIRECTORY>
+```
 > [!WARNING]
 > Please provide pipeline parameters via the CLI or Nextflow `-params-file` option. Custom config files including those provided by the `-c` Nextflow option can be used to provide any configuration _**except for parameters**_;
 > see [docs](https://nf-co.re/usage/configuration#custom-configuration-files).
 
 ## Credits
 
-sanger-tol/treevalhiglassdigest was originally written by Will Eagles.
+sanger-tol/treevalhiglassdigest was written by Will Eagles, based on modules written by Beth Yates.
 
-We thank the following people for their extensive assistance in the development of this pipeline:
-
+We additionally thank the following people for their extensive assistance in the development of this pipeline:
+   - Guoying Qi
+   - Matthieu Muffato
 <!-- TODO nf-core: If applicable, make list of people who have also contributed -->
 
 ## Contributions and Support
